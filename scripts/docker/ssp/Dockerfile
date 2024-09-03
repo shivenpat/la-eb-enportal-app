@@ -1,4 +1,4 @@
-FROM scm.artifactory.mars.pcf-maximus.com/scm/maxe-enportal-app.maxe:8.0.+
+FROM scm.artifactory.mars.pcf-maximus.com/codeshuttle/maximus-maxe/maxe-enportal-app.maxe:8.0.16
 
 COPY reference /data/properties
 
