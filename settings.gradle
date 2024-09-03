@@ -1,13 +1,1 @@
-rootProject.name = 'LA-eb-enportal-app'
-
-buildCache {
-  local {
-    enabled = true
-  }
-  remote(HttpBuildCache) {
-    push = true
-    url = "https://gradle.collaboration.maximus.com/cache/"
-	allowUntrustedServer = true
-	enabled = true
-  }
-}
+rootProject.name = 'la-eb-enportal-app'

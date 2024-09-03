@@ -3,7 +3,6 @@ Map config = generateConfig()
 //===========PROJECT/PIPELINE OVERRIDES==============
 //You can comment this later and control thru Pipeline.
 config.pipeline.debug.global     = false
-config.pipeline.type             = 'scmscript'
 config.project.fastCheckout      = true
 config.project.backup.enabled    = true
 config.project.types             = ['gradle', 'spf']
@@ -21,7 +20,7 @@ config.services.notification.methods.email.to = 'HemaManohar@maximus.com'
 config.services.notification.types.auto_deploy = false
 
 //===========STAGE DEFINITION========================
-config.pipeline.stages.build.enabled       = false
+config.pipeline.stages.build.enabled       = true
 config.pipeline.stages.unitTest.enabled    = false
 config.pipeline.stages.quality.enabled     = false
 config.pipeline.stages.retrieve.enabled    = false

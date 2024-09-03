@@ -1,12 +1,2 @@
-buildscript {	
-	repositories {
-		mavenCentral()
-	}
-	dependencies {
-		classpath("org.owasp:dependency-check-gradle:3.3.1")
-	}
-}
-apply plugin: "org.owasp.dependencycheck"
-apply plugin: "jacoco"
 apply from: "file:${projectDir}/buildCommon/common.gradle"  //common.gradle sorts out your generic build needs, see SCM for any questions
 //1:44 PM Thursday, November 3, 2022 
