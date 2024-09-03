@@ -1,4 +1,6 @@
 Map config = generateConfig()
+config.pipeline.stages.autoVersion.enabled = true
+config.pipeline.stages.autoVersion.branch = 'main'
 
 //===========PROJECT/PIPELINE OVERRIDES==============
 //You can comment this later and control thru Pipeline.
