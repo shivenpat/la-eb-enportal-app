@@ -1,0 +1,43 @@
+@Library('codeshuttle@ics5-sec-mongo')
+Map config = generateConfig()
+
+//===========PROJECT/PIPELINE OVERRIDES==============
+//You can comment this later and control thru Pipeline.
+config.pipeline.debug.global     = true
+config.pipeline.type             = 'scmscript'
+config.project.fastCheckout      = true
+config.project.backup.enabled    = true
+config.project.types             = ['gradle', 'spf']
+
+//===========TOOL DEFINITIONS========================
+config.services.jenkins.tools.global = [ 'gradle-5', 'jdk-amazon-corretto-11.0.13.8.1-linux-x64']
+
+List dockerTools = ['scmscript-latest', 'gradle-5', 'jdk-amazon-corretto-11.0.13.8.1-linux-x64']
+config.pipeline.stages.build.jenkins.tools = dockerTools
+config.pipeline.stages.publish.jenkins.tools = dockerTools
+config.pipeline.stages.publish.jenkins.verifyTools = false
+config.pipeline.stages.smoke.jenkins.tools = [null]
+config.services.notification.methods.email.enabled = true
+config.services.notification.methods.email.to = 'HemaManohar@maximus.com'
+config.services.notification.types.auto_deploy = false
+
+//===========STAGE DEFINITION========================
+config.pipeline.stages.build.enabled       = false
+config.pipeline.stages.unitTest.enabled    = false
+config.pipeline.stages.quality.enabled     = false
+config.pipeline.stages.retrieve.enabled    = false
+config.pipeline.stages.functional.enabled  = false
+config.pipeline.stages.publish.autoPublish = true
+config.pipeline.stages.sastCheck.enabled   = false
+config.pipeline.stages.smoke.enabled       = false
+
+config.tools.terraform.version = "1.1"
+config.pipeline.envVars= ["TZ=US/Mountain"]
+config.services.kubernetes.containers.csagent = [:]
+config.services.kubernetes.containers.csagent  =  [image: 'scm.artifactory.mars.pcf-maximus.com/codeshuttle/dev/codeshuttle-agent:2.12.2-vpc-job-fix-0-dind']
+//config.services.kubernetes.containers.csagent  =  [image: 'scm.artifactory.mars.pcf-maximus.com/codeshuttle/codeshuttle-agent:2.12.0-vpc-job-fix-1-dind']
+config.services.kubernetes.containers.csagent.resourceLimitEphemeralStorage = '10Gi'
+config.services.kubernetes.containers.csagent.resourceRequestEphemeralStorage = "4Gi"
+config.developer.impersonate          = 'maximus-laeb'
+
+ciPipeline(config)

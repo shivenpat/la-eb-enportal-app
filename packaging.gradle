@@ -1,0 +1,13 @@
+/*********   Start Customize Packaging Configuration Section    *********/
+/************************************************************************/
+ext {
+jarComponents = []
+
+warComponents = []
+
+earComponents = []
+
+externalJars = []
+}
+/************************************************************************/
+/*********      End Custom Packaging Configuration Section      *********/

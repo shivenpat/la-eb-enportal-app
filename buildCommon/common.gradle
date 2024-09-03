@@ -1,0 +1,489 @@
+apply plugin: "jacoco"
+
+gradle.taskGraph.whenReady { graph ->
+    def enabled = graph.allTasks.any { it instanceof JacocoReport }
+    tasks.withType(Test) {
+        jacoco.enabled = enabled
+    }
+}
+
+repositories {
+	ivy {
+		url "https://artifactory.mars.pcf-maximus.com/artifactory/scm-ivy-local"
+		patternLayout {
+			artifact "[organisation]/[module]/[revision]/[artifact].[ext]"
+			ivy "[organisation]/[module]/[revision]/ivy-module.xml"
+		}
+	}
+	mavenCentral()
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse-wtp'
+apply plugin: 'idea'
+apply plugin: 'war'
+//apply plugin: 'maven'
+
+apply from: "file:${projectDir}/packaging.gradle" //Developers can define packaging requirements in this file.
+apply from: "file:${projectDir}/dependencies.gradle"  //where to define compile and runtime dependencies, pulling from ivy
+
+configurations.all {
+    transitive = true
+	exclude group: 'org.slf4j', module: 'slf4j-over-slf4j'
+}
+
+configurations.all { 
+	resolutionStrategy { 
+		cacheDynamicVersionsFor 0, "seconds" 
+		cacheChangingModulesFor 0, "seconds" 
+	} 
+}
+
+def requiredJavaVersion = null
+if (reqJavaVer.equals("1.8")) requiredJavaVersion = JavaVersion.VERSION_1_8
+if (reqJavaVer.equals("11")) requiredJavaVersion = JavaVersion.VERSION_11
+if (reqJavaVer.equals("17")) requiredJavaVersion = JavaVersion.VERSION_17
+if (reqJavaVer.equals("19")) requiredJavaVersion = JavaVersion.VERSION_19
+if (!requiredJavaVersion == null) sourceCompatibility = requiredJavaVersion
+war.enabled = false
+jar.enabled = false
+
+defaultTasks 'clean','build'
+
+group = "maximus"
+
+//Jenkins jobs can monitor test results.
+//need to ignore failures in order for gradle to continue with analysis tasks like sonarqube, OWASP, etc.
+test {
+	ignoreFailures = true
+}
+
+def builtBy = System.getProperty("user.name") 
+def dateFormat = java.text.SimpleDateFormat.getDateInstance(
+	java.text.SimpleDateFormat.FULL, java.util.Locale.US)
+dateFormat.applyPattern("yyyyMMddHHmmss")
+def date = new java.util.Date()
+def buildTime = dateFormat.format(date)
+def osName = System.getProperty("os.name")
+def osVer = System.getProperty("os.version")
+def osArch = System.getProperty("os.arch")
+def lib = projectDir.getAbsolutePath() + "/lib"
+
+ext {
+	buildVersion = "0.0.0"
+	if (rootProject.hasProperty('currentVersion')) 
+		buildVersion = currentVersion
+	version buildVersion
+	}
+	ext.attribs = ["Java-Version": requiredJavaVersion, 
+		"Compiled-OS": osName, 
+		"Compiled-OS_Version": osVer,
+		"Compiled-OS_Architecture": osArch,
+		"Compiled-By": builtBy, 
+		"Compiled-Date": buildTime, 
+		"Build-System": "Gradle",
+		"Release": buildVersion]
+					
+configurations {
+    compile
+	bin
+}
+
+Vector deps = new Vector()
+for (sub in project.subprojects) {
+	def nextSub = sub.toString().replace("project ", "").replaceAll("'", "")
+	if (!nextSub.endsWith("externals")) deps.add(nextSub) 
+}
+
+dependencies { 
+    for (dep in deps) compile project(dep) 
+}
+
+compileJava.dependsOn("checkJavaVersion", "getLibs", "localizeClasspath")
+
+//Task for tests that run Out Of Container like easymock, junit
+task testOOC( type: Test) {
+	exclude '**/*IC*'
+}
+
+//Task for test that run In Container like Arquillian
+task testIC( type: Test) {
+	include '**/*IC*'
+}
+
+/*
+ * This task creates arquillian.xml, this file is used by Arquillian test clients in order to deploy the war file in WebLogic
+ * The following environment variables are expected:
+ * 
+ * export WL_ADMIN_URL='t3://hostname:port' //eg WL_ADMIN_URL='t3://localhost:7001'
+ * export WL_ADMIN_USER='weblogic'
+ * export WL_ADMIN_PASSWORD='secret_password'
+ * export WL_SERVER='AdminServer'
+ * export WL_HOME='${WL_PATH}\wlserver_12.1' // eg: WL_HOME='C:\Oracle\Middleware\wlserver_12.1'
+ * 
+ * */
+task createArquillianXml {
+	doLast {
+		String contents = new File( './src/test/resources/arquillian_TEMPLATE.xml' ).getText( 'UTF-8' )
+		contents = contents.replace('WL_ADMIN_URL', System.getenv()['WL_ADMIN_URL'] )
+		contents = contents.replace('WL_ADMIN_USER', System.getenv()['WL_ADMIN_USER'] )
+		contents = contents.replace('WL_ADMIN_PASSWORD', System.getenv()['WL_ADMIN_PASSWORD'] )
+		contents = contents.replace('WL_SERVER', System.getenv()['WL_SERVER'] )
+		contents = contents.replace('WL_HOME', System.getenv()['WL_HOME'] )
+		new File( './src/test/resources/arquillian.xml' ).write( contents, 'UTF-8' )
+	}
+}
+
+task checkJavaVersion() {
+    description = 'Verifies the correct Java Version is used to compile'
+	if (JavaVersion.current() != requiredJavaVersion) {
+		throw new GradleException("The java version ${JavaVersion.current()} being used is not the expected version ${requiredJavaVersion}.")
+	}
+}
+
+task getLibs(type: Sync) { 
+  from project.configurations.compileClasspath
+  into "lib"
+}
+
+task localizeClasspath() {
+	doLast {
+		String rootDir = projectDir.getAbsolutePath()
+		File localLib = new File(lib)
+		if (localLib.isDirectory()) {
+			ArrayList origPath = sourceSets.main.compileClasspath.collect()
+			ArrayList origNames = new ArrayList()
+			for (File f : origPath)	origNames.add(f.getName())
+			ArrayList libFiles = localLib.listFiles()
+			ArrayList newPath = new ArrayList()
+			for (File f : origPath) 
+				if (!f.getAbsolutePath().startsWith(rootDir))
+					newPath.add(new File(lib + "/" + f.getName()))
+				else newPath.add(f)
+			ArrayList localAdd = new ArrayList()
+			for (File f : libFiles) {
+				String nextName = f.getName()
+				int position = origNames.indexOf(nextName)
+				if (position < 0 ) localAdd.add(f)
+			}
+			for (File f : localAdd) newPath.add(0, f)
+			sourceSets.main.compileClasspath = project.files(newPath)
+		}
+	}
+}
+
+task deleteIndividualsCache() {
+	doLast {
+		def gradleCache = "${System.properties['user.home']}/.gradle/caches/build-cache-1"
+		delete(gradleCache)
+	}
+}
+
+jarComponents.each { comp ->
+	project.task("jar"+comp.name+"Init", type: Copy, dependsOn: testClasses) {
+		from (sourceSets.main.output.classesDirs)
+		into (sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_jar")
+	}
+}
+
+jarComponents.each { comp ->
+	project.task("jar"+comp.name+"CopyResource", dependsOn: ["jar"+comp.name+"Init"]) {
+		doLast {
+			if (comp.relocate != "") {
+				def relocateList = comp.relocate.split(",")
+				for (String entry : relocateList) {
+					def source = "${projectDir}/" + entry.substring(0, entry.indexOf(":"))
+					def to = "${projectDir}/" + entry.substring(entry.indexOf(":") + 1).replace("main", comp.name + "_jar")
+					copy {
+						from (source)
+						into (to)
+					}
+				}
+			}
+		}
+	}
+}
+
+jarComponents.each { comp ->
+	project.task("jar"+comp.name, type: Jar, dependsOn: ["jar"+comp.name+"CopyResource"]) { task ->
+		artifacts {
+			bin task
+		}
+		includeEmptyDirs = false
+		archiveName = comp.name + ".jar"
+		def allPatterns = comp.includes
+		def includeList = allPatterns.split(",")
+		for (String pattern : includeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_jar")
+			include(pattern)
+		}
+		def excludeList = comp.excludes.split(",")
+		for (String pattern : excludeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_jar")
+			exclude(pattern)
+		}
+		if (comp.customAttribs != null) {
+			attribs += comp.customAttribs
+		}
+		manifest {
+			attributes(attribs)
+		}		
+	}
+	jar.dependsOn("jar"+comp.name)
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name+"Init", type: Copy, dependsOn: [jar]) {
+		from (sourceSets.main.output.classesDirs)
+		into (sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war")
+	}
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name+"Copy", type: Copy, dependsOn: ["war"+comp.name+"Init"]) {
+		def binaryList = comp.root_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}				
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war")
+	}
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name+"LibCopy", type: Copy, dependsOn: ["war"+comp.name+"Copy"]) {
+		def binaryList = comp.lib_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war" + "/lib")
+	}
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name+"WLibCopy", type: Copy, dependsOn: ["war"+comp.name+"LibCopy"]) {
+		def binaryList = comp.webinf_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war" + "/WEB-INF/lib")
+	}
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name+"CopyResource", dependsOn: ["war"+comp.name+"WLibCopy"]) {
+		doLast {
+			if (comp.relocate != null && comp.relocate.contains(":")) {
+				def relocateList = comp.relocate.split(",")
+				for (String entry : relocateList) {
+					def source = "${projectDir}/" + entry.substring(0, entry.indexOf(":"))
+					def to = "${projectDir}/" + entry.substring(entry.indexOf(":") + 1).replace("main", comp.name + "_war")
+					copy {
+						from (source)
+						into (to)
+					}
+				}
+			}
+		}
+	}
+}
+
+warComponents.each { comp ->
+	project.task("war"+comp.name, type: Jar, dependsOn: ["war"+comp.name+"WLibCopy", "war"+comp.name+"CopyResource"]) {
+		includeEmptyDirs = false
+		archiveName = comp.name + ".war"
+		def allPatterns = comp.includes
+		def includeList = allPatterns.split(",")
+		for (String pattern : includeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war")
+			include(pattern)
+		}
+		def excludeList = comp.excludes.split(",")
+		for (String pattern : excludeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_war")
+			exclude(pattern)
+		}
+		if (comp.customAttribs != null) {
+			attribs += comp.customAttribs
+		}
+		manifest {
+			attributes(attribs)
+		}		
+	}
+	war.dependsOn("war"+comp.name)
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name+"Init", type: Copy, dependsOn: [jar, war]) {
+		from (sourceSets.main.output.classesDirs)
+		into (sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear")
+	}
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name+"Copy", type: Copy, dependsOn: ["ear"+comp.name+"Init"]) {
+		def binaryList = comp.root_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear")
+	}
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name+"LibCopy", type: Copy, dependsOn: ["ear"+comp.name+"Copy"]) {
+		def binaryList = comp.lib_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear" + "/lib")
+	}
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name+"WLibCopy", type: Copy, dependsOn: ["ear"+comp.name+"LibCopy"]) {
+		def binaryList = comp.webinf_binaries.split(",")
+		for (String binary : binaryList) {
+			if (binary.length() > 0) {
+				String binPath = "";
+				String binName = "";
+				if (binary.contains("/")) {
+					binPath = binary.substring(0, binary.lastIndexOf("/"))
+					binName = binary.substring(binary.lastIndexOf("/") + 1)
+				}
+				else {
+					binPath = binary.substring(0, binary.lastIndexOf("\\"))
+					binName = binary.substring(binary.lastIndexOf("\\") + 1)
+				}
+				from(binPath) { include(binName) }
+				externalJars.each { paths ->
+					from(paths.jar.substring(0, paths.jar.lastIndexOf("/"))) { include(binary.replace("lib/","")) }
+				}
+			}
+		}
+		into(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear" + "/WEB-INF/lib")				
+	}
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name+"CopyResource", dependsOn: ["ear"+comp.name+"WLibCopy"]) {
+		doLast {
+			if (comp.relocate != null && comp.relocate.contains(":")) {
+				def relocateList = comp.relocate.split(",")
+				for (String entry : relocateList) {
+					def source = "${projectDir}/" + entry.substring(0, entry.indexOf(":"))
+					def to = "${projectDir}/" + entry.substring(entry.indexOf(":") + 1).replace("main", comp.name + "_ear")
+					copy {
+						from (source)
+						into (to)
+					}
+				}
+			}
+		}
+	}
+}
+
+earComponents.each { comp ->
+	project.task("ear"+comp.name, type: Jar, dependsOn: ["ear"+comp.name+"WLibCopy", "ear"+comp.name+"CopyResource", war]) {
+		includeEmptyDirs = false
+		archiveName = comp.name + ".ear"
+		def allPatterns = comp.includes
+		def includeList = allPatterns.split(",")
+		for (String pattern : includeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear")
+			include(pattern)
+		}
+		def excludeList = comp.excludes.split(",")
+		for (String pattern : excludeList) {
+			from file(sourceSets.main.output.classesDirs[0].getAbsolutePath() + "/../" + comp.name + "_ear")
+			exclude(pattern)
+		}
+		if (comp.customAttribs != null) {
+			attribs += comp.customAttribs
+		}
+		manifest {
+			attributes(attribs)
+		}		
+	}
+	assemble.dependsOn("ear"+comp.name)
+}
+
+artifacts {
+	jarComponents.each { archives(tasks["jar"+it.name]) } 
+	warComponents.each { archives(tasks["war"+it.name]) }
+	earComponents.each { archives(tasks["ear"+it.name]) }
+}

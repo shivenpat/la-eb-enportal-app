@@ -1,0 +1,7 @@
+{
+  "name": "@maximus-laeb/ssp",
+  "description": "API Deployment Package for LA-eb",
+  "files": [
+    "spf.yml"
+  ]
+}

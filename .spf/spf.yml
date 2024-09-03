@@ -1,0 +1,28 @@
+---
+spf: partial
+
+services:
+  ssp-service:
+    abstract: true
+    documentation: |
+      The Self Service Portal (SSP) (aka enportal) application service delivered in Fargate
+    alias: http
+    offset: 8000
+    health_check: /apigateway/
+    sticky: true
+    deployment:
+      type: ecs
+      release: v1
+      grace_period: 120
+      definition:
+      - name: app
+        image: scm.artifactory.mars.pcf-maximus.com/scm/la-eb-enportal-app.ssp:REPLACEMEAGAIN
+        cpu: 2
+        memory: 4
+        environment:
+        - name: SPF_NET_NAME
+          value: "{{  spf.netName }}"
+        - name: EB_ENDPOINT
+          value: "{{  cfg.environment.EB_ENDPOINT | mandatory('EB_ENDPOINT') }}"
+        - name: CACHE_ENDPOINT
+          value: "{{  cfg.environment.CACHE_ENDPOINT | d('') }}"
