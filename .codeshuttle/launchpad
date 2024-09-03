@@ -5,7 +5,7 @@ Map config = generateConfig()
 config.pipeline.debug.global     = false
 config.project.fastCheckout      = true
 config.project.backup.enabled    = true
-config.project.types             = ['gradle', 'spf']
+config.project.types             = ['gradle', 'spf', 'docker']
 
 //===========TOOL DEFINITIONS========================
 config.services.jenkins.tools.global = [ 'gradle-5', 'jdk-amazon-corretto-11.0.13.8.1-linux-x64']
