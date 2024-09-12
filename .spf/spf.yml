@@ -16,7 +16,7 @@ services:
       grace_period: 120
       definition:
       - name: app
-        image: scm.artifactory.mars.pcf-maximus.com/scm/la-eb-enportal-app.ssp:REPLACEMEAGAIN
+        image: scm.artifactory.mars.pcf-maximus.com/codeshuttle/maximus-laeb/la-eb-enportal-app.ssp:0.0.0
         cpu: 2
         memory: 4
         environment:
