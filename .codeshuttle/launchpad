@@ -18,6 +18,7 @@ config.pipeline.stages.smoke.jenkins.tools = [null]
 config.services.notification.methods.email.enabled = true
 config.services.notification.methods.email.to = 'BrianGeist@maximus.com'
 config.services.notification.types.auto_deploy = false
+config.services.docker.platforms = ['linux/arm64']
 
 //===========STAGE DEFINITION========================
 config.pipeline.stages.build.enabled       = true

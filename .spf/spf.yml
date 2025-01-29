@@ -14,6 +14,7 @@ services:
       type: ecs
       release: v1
       grace_period: 120
+      architecture: arm64
       definition:
       - name: app
         image: scm.artifactory.mars.pcf-maximus.com/codeshuttle/maximus-laeb/la-eb-enportal-app.ssp:0.0.0
