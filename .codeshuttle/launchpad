@@ -15,6 +15,7 @@ config.pipeline.stages.build.jenkins.tools = dockerTools
 config.pipeline.stages.publish.jenkins.tools = dockerTools
 config.pipeline.stages.publish.jenkins.verifyTools = false
 config.pipeline.stages.smoke.jenkins.tools = [null]
+config.pipeline.stages.build.docker.buildx = [:]
 config.pipeline.stages.build.docker.buildx.createArgs = '--driver-opt image=docker.artifactory.mars.pcf-maximus.com/moby/buildkit:buildx-stable-1'
 config.services.notification.methods.email.enabled = true
 config.services.notification.methods.email.to = 'BrianGeist@maximus.com'
