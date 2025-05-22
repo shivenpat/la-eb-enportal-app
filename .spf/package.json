@@ -1,6 +1,6 @@
 {
   "name": "@maximus-laeb/ssp",
-  "version": "17.1.1",
+  "version": "17.1.2",
   "description": "API Deployment Package for LA-eb",
   "files": [
     "spf.yml",
